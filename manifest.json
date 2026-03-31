@@ -1,0 +1,11 @@
+{
+  "domain": "kaneo",
+  "name": "Kaneo",
+  "version": "1.0.0",
+  "documentation": "https://kaneo.app/docs/api-reference/",
+  "requirements": [],
+  "dependencies": [],
+  "codeowners": [],
+  "iot_class": "cloud_polling",
+  "config_flow": true
+}

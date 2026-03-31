@@ -1,0 +1,33 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configurer Kaneo",
+        "description": "Entrez les informations de connexion à votre instance Kaneo.",
+        "data": {
+          "base_url": "URL de l'instance (ex: https://cloud.kaneo.app)",
+          "api_token": "Token d'API (Bearer Token)",
+          "workspace_id": "ID du Workspace"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Impossible de se connecter à Kaneo",
+      "invalid_auth": "Token d'authentification invalide",
+      "unknown": "Erreur inconnue"
+    },
+    "abort": {
+      "already_configured": "Kaneo est déjà configuré"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options Kaneo",
+        "data": {
+          "scan_interval": "Intervalle de mise à jour (secondes)"
+        }
+      }
+    }
+  }
+}
