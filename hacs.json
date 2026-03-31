@@ -1,8 +1,6 @@
 {
-    "name": "Kaneo",
-    "domains": [
-        "sensor"
-    ],
-    "iot_class": "cloud_polling",
-    "homeassistant": "2023.1.0"
+  "name": "Kaneo",
+  "domains": ["sensor"],
+  "iot_class": "cloud_polling",
+  "homeassistant": "2023.1.0"
 }

@@ -86,10 +86,99 @@ class KaneoApiClient:
             params={"workspaceId": self._workspace_id},
         )
 
-    async def get_tasks(self, project_id: str) -> dict[str, Any]:
-        """Get all tasks for a project."""
+    async def get_tasks(self, project_id: str) -> Any:
+        """Get all tasks for a project (raw response)."""
         endpoint = API_TASKS.format(project_id=project_id)
         return await self._request("GET", endpoint)
+
+    def _extract_tasks_from_response(
+        self,
+        data: Any,
+        project_name: str,
+        project_id: str,
+    ) -> list[dict[str, Any]]:
+        """
+        Extract a flat task list from whatever structure the API returns.
+
+        Kaneo may return one of several shapes:
+          1. { "columns": [ { "name": "...", "tasks": [...] } ] }
+          2. { "tasks": [...] }
+          3. [ { "id": "...", "title": "..." }, ... ]   (flat list)
+          4. A task object directly (unlikely but handled)
+        """
+        tasks: list[dict[str, Any]] = []
+
+        _LOGGER.debug(
+            "Raw tasks response for project '%s' (type=%s): %s",
+            project_name,
+            type(data).__name__,
+            data,
+        )
+
+        if data is None:
+            _LOGGER.warning("Null response for project '%s'", project_name)
+            return tasks
+
+        # Case 3 — flat list at top level
+        if isinstance(data, list):
+            for item in data:
+                if isinstance(item, dict):
+                    item.setdefault("_project_name", project_name)
+                    item.setdefault("_project_id", project_id)
+                    item.setdefault("_column_name", item.get("status", ""))
+                    tasks.append(item)
+            return tasks
+
+        if not isinstance(data, dict):
+            _LOGGER.warning(
+                "Unexpected response type for project '%s': %s", project_name, type(data)
+            )
+            return tasks
+
+        # Case 1 — { columns: [{ name, tasks }] }
+        if "columns" in data:
+            for column in data["columns"]:
+                col_name = column.get("name", column.get("title", ""))
+                for task in column.get("tasks", []):
+                    if isinstance(task, dict):
+                        task["_project_name"] = project_name
+                        task["_project_id"] = project_id
+                        task["_column_name"] = col_name
+                        tasks.append(task)
+            return tasks
+
+        # Case 2 — { tasks: [...] }
+        if "tasks" in data:
+            for task in data["tasks"]:
+                if isinstance(task, dict):
+                    task["_project_name"] = project_name
+                    task["_project_id"] = project_id
+                    task["_column_name"] = task.get("status", "")
+                    tasks.append(task)
+            return tasks
+
+        # Case 4 — the dict itself looks like a project wrapper containing task data
+        # Try every key whose value is a list and pick the one with task-like dicts
+        for key, value in data.items():
+            if isinstance(value, list) and value and isinstance(value[0], dict):
+                if "id" in value[0] or "title" in value[0]:
+                    _LOGGER.debug(
+                        "Found tasks under key '%s' for project '%s'", key, project_name
+                    )
+                    for task in value:
+                        if isinstance(task, dict):
+                            task["_project_name"] = project_name
+                            task["_project_id"] = project_id
+                            task["_column_name"] = task.get("status", "")
+                            tasks.append(task)
+                    return tasks
+
+        _LOGGER.warning(
+            "Could not extract tasks from response keys %s for project '%s'",
+            list(data.keys()),
+            project_name,
+        )
+        return tasks
 
     async def get_all_tasks(self) -> list[dict[str, Any]]:
         """Get all tasks across all projects."""
@@ -101,6 +190,8 @@ class KaneoApiClient:
             _LOGGER.error("Failed to fetch projects: %s", err)
             return all_tasks
 
+        _LOGGER.debug("Found %d projects", len(projects))
+
         for project in projects:
             project_id = project.get("id")
             project_name = project.get("name", "Unknown")
@@ -109,18 +200,17 @@ class KaneoApiClient:
 
             try:
                 data = await self.get_tasks(project_id)
-                # The API returns { columns: [{ tasks: [...] }] } or similar
-                columns = data.get("columns", [])
-                for column in columns:
-                    tasks = column.get("tasks", [])
-                    for task in tasks:
-                        task["_project_name"] = project_name
-                        task["_project_id"] = project_id
-                        task["_column_name"] = column.get("name", "")
-                        all_tasks.append(task)
+                project_tasks = self._extract_tasks_from_response(
+                    data, project_name, project_id
+                )
+                _LOGGER.debug(
+                    "Project '%s': extracted %d tasks", project_name, len(project_tasks)
+                )
+                all_tasks.extend(project_tasks)
             except KaneoApiError as err:
                 _LOGGER.warning(
-                    "Failed to fetch tasks for project %s: %s", project_name, err
+                    "Failed to fetch tasks for project '%s': %s", project_name, err
                 )
 
+        _LOGGER.debug("Total tasks fetched: %d", len(all_tasks))
         return all_tasks
